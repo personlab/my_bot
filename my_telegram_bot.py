@@ -33,28 +33,31 @@ def connect_handler(message):
 
 def connect_host(message):
     bot.current_user_data[message.chat.id]['host'] = message.text
+
     bot.send_message(message.chat.id, "Хост сохранен. Введите имя пользователя:")
     bot.register_next_step_handler(message, connect_user)
 
-
 def connect_user(message):
     bot.current_user_data[message.chat.id]['user'] = message.text
+
     bot.send_message(message.chat.id, "Имя пользователя сохранено. Введите пароль:")
     bot.register_next_step_handler(message, connect_password)
 
-
 def connect_password(message):
     bot.current_user_data[message.chat.id]['password'] = message.text
+
     bot.send_message(message.chat.id, "Пароль сохранен. Введите имя базы данных:")
     bot.register_next_step_handler(message, connect_database)
 
 
 def connect_database(message):
     bot.current_user_data[message.chat.id]['database'] = message.text
+
     host = bot.current_user_data[message.chat.id]['host']
     user = bot.current_user_data[message.chat.id]['user']
     password = bot.current_user_data[message.chat.id]['password']
     database = bot.current_user_data[message.chat.id]['database']
+
     try:
         result = run_query("SHOW TABLES", host, user, password, database)
         bot.send_message(message.chat.id, "Подключение к базе данных успешно. Результат запроса:\n{}".format(result))
@@ -65,13 +68,14 @@ def connect_database(message):
 bot.current_user_data = defaultdict(dict)
 
 
-@bot.message_handler(commands=['select'])
-def select_handler(message):
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
     if not bot.current_user_data.get(message.chat.id):
         bot.reply_to(message, "Сначала необходимо подключиться к базе данных. Для этого введите команду /connect.")
-    else:
-        query = message.text.replace("/select ", "")
-        host = bot.current_user_data.get(message.chat.id, {}).get('host')
+        return
+    if message.text.strip().upper().startswith("SELECT"):
+        query = message.text.strip()
+        host = bot.current_user_data[message.chat.id]['host']
         user = bot.current_user_data[message.chat.id]['user']
         password = bot.current_user_data[message.chat.id]['password']
         database = bot.current_user_data[message.chat.id]['database']
@@ -80,24 +84,18 @@ def select_handler(message):
         for row in results:
             response += str(row) + "\n"
         bot.reply_to(message, response)
-
-
-@bot.message_handler(commands=['insert'])
-def insert_handler(message):
-    if not bot.current_user_data.get(message.chat.id):
-        bot.reply_to(message, "Сначала необходимо подключиться к базе данных. Для этого введите команду /connect.")
-
-    else:
-        query = message.text.replace("/insert ", "")
-        host = bot.current_user_data.get(message.chat.id, {}).get('host')
+    elif message.text.strip().upper().startswith("INSERT"):
+        query = message.text.strip()
+        host = bot.current_user_data[message.chat.id]['host']
         user = bot.current_user_data[message.chat.id]['user']
         password = bot.current_user_data[message.chat.id]['password']
         database = bot.current_user_data[message.chat.id]['database']
-        try:
-            run_query(query, host, user, password, database)
-            bot.reply_to(message, "Данные были успешно добавлены в таблицу.")
-        except mysql.connector.errors.Error as error:
-            bot.reply_to(message, "Ошибка при добавлении данных: {}".format(error))
+        run_query(query, host, user, password, database)
+
+        response = "Данные успешно добавлены в базу данных"
+        bot.reply_to(message, response)
+    else:
+        bot.reply_to(message, "Некорректный запрос. Введите SQL-запрос в формате 'SELECT ...' или 'INSERT INTO ... VALUES ...'")
 
 
 bot.polling(none_stop=True)
