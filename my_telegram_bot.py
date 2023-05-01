@@ -74,26 +74,10 @@ def connect_database(message):
 bot.current_user_data = defaultdict(dict)
 
 
-@bot.message_handler(func=lambda message: len(message.text) < 4096)
+@bot.message_handler(func=lambda message: True)
 def handle_message(message):
     if not bot.current_user_data.get(message.chat.id):
         bot.reply_to(message, "Сначала необходимо подключиться к базе данных. Для этого введите команду /connect.")
-        return
-
-    headers = {}
-    if message.entities is not None:
-        for entity in message.entities:
-            if entity.type == 'text_link':
-                headers['content-type'] = 'application/json'
-                headers['content-length'] = str(len(entity.url))
-                break
-            elif entity.type == 'url':
-                headers['content-type'] = 'text/html'
-                break
-
-    if len(str(headers) + str(message.text)).encode('utf-8') > 8000:
-        bot.reply_to(message, f"Ошибка: запрос слишком длинный. Максимальный размер заголовков и запроса - 8000 байт. "
-                              f"Пожалуйста, измените запрос и повторите попытку.")
         return
 
     if message.text.strip().upper().startswith("SELECT"):
@@ -108,6 +92,7 @@ def handle_message(message):
         for row in results:
             response += str(row) + "\n"
         bot.reply_to(message, response)
+
     elif message.text.strip().upper().startswith("INSERT"):
         query = message.text.strip()
         host = bot.current_user_data[message.chat.id]['host']
@@ -118,9 +103,9 @@ def handle_message(message):
 
         response = "Данные успешно добавлены в базу данных"
         bot.reply_to(message, response)
+
     else:
-        bot.reply_to(message, "Некорректный запрос. Введите SQL-запрос в"
-                              " формате 'SELECT ...' или 'INSERT INTO ... VALUES ...'")
+        bot.reply_to(message, "Некорректный запрос. Введите SQL-запрос в формате 'SELECT ...' или 'INSERT INTO ... VALUES ...'")
 
 
 bot.polling(none_stop=True)
