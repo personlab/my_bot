@@ -1,11 +1,15 @@
 import os
+import sys
+from typing import Union
 from collections import defaultdict
 import telebot
 from telebot import types
 from my_connector_bot import *
-from my_connector_bot import run_query
 from dotenv import load_dotenv
 
+activate_this = 'D:/my_sql_project/my_virtualenv/my_bot/activate_this.py'
+with open(activate_this) as f:
+     exec(f.read(), {'__file__': activate_this})
 
 load_dotenv()
 bot = telebot.TeleBot(os.environ['YB_TELEGRAM_BOT'])
@@ -74,31 +78,60 @@ def connect_database(message):
 bot.current_user_data = defaultdict(dict)
 
 
+def check_response_size(response: Union[str, bytes]):
+    max_size = 10 * 1024 * 1024
+    if isinstance(response, str):
+        response_size = sys.getsizeof(response.encode("utf-8"))
+    else:
+        response_size = sys.getsizeof(response.content)
+    if response_size > max_size:
+        return False
+    return True
+
+
+def create_shortened_response(response):
+    max_allowed_size = 4000
+    current_size = len(response)
+    chars_to_remove = current_size - max_allowed_size
+    shortened_response = response[:-chars_to_remove]
+    return shortened_response
+
+
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
-    if not bot.current_user_data.get(message.chat.id):
+    chat_id = message.chat.id
+    text = message.text
+    if not bot.current_user_data.get(chat_id):
         bot.reply_to(message, "Сначала необходимо подключиться к базе данных. Для этого введите команду /connect.")
         return
 
-    if message.text.strip().upper().startswith("SELECT"):
-        query = message.text.strip()
-        host = bot.current_user_data[message.chat.id]['host']
-        user = bot.current_user_data[message.chat.id]['user']
-        password = bot.current_user_data[message.chat.id]['password']
-        database = bot.current_user_data[message.chat.id]['database']
+    if text.strip().upper().startswith("SELECT"):
+        query = text.strip()
+        host = bot.current_user_data[chat_id]['host']
+        user = bot.current_user_data[chat_id]['user']
+        password = bot.current_user_data[chat_id]['password']
+        database = bot.current_user_data[chat_id]['database']
         results = run_query(query, host, user, password, database)
 
         response = "Результаты:\n"
         for row in results:
             response += str(row) + "\n"
-        bot.reply_to(message, response)
 
-    elif message.text.strip().upper().startswith("INSERT"):
-        query = message.text.strip()
-        host = bot.current_user_data[message.chat.id]['host']
-        user = bot.current_user_data[message.chat.id]['user']
-        password = bot.current_user_data[message.chat.id]['password']
-        database = bot.current_user_data[message.chat.id]['database']
+        response_size_ok = check_response_size(response)
+
+        if response_size_ok:
+            try:
+                bot.reply_to(message, response)
+            except telebot.apihelper.ApiHTTPException:
+                create_shortened_response(response)
+                bot.reply_to(message, f"Слишком большой объем данных. Вот обрезанный ответ:\n{create_shortened_response(response)}")
+
+    elif text.strip().upper().startswith("INSERT"):
+        query = text.strip()
+        host = bot.current_user_data[chat_id]['host']
+        user = bot.current_user_data[chat_id]['user']
+        password = bot.current_user_data[chat_id]['password']
+        database = bot.current_user_data[chat_id]['database']
         run_query(query, host, user, password, database)
 
         response = "Данные успешно добавлены в базу данных"
