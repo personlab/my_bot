@@ -11,14 +11,17 @@ import datetime
 import requests
 import time
 
+
 # Для работы программы используется библиотека Telebot для взаимодействия с Telegram API.
 # Формат сообщений, отправляемых пользователю описан в документации модуля types.
 # Кроме того, в программе используется функция load_dotenv для загрузки переменных
 # окружения и модуль os для доступа к ним.
 
-activate_this = 'D:/my_bot/my_bot/activate_this.py'
+
+activate_this = 'ваш путь /home/personbk/tgbot/bin/activate_this.py'
 with open(activate_this) as f:
      exec(f.read(), {'__file__': activate_this})
+
 
 load_dotenv()
 bot = telebot.TeleBot(os.environ['YB_TELEGRAM_BOT'])
@@ -54,13 +57,13 @@ def start(message):
     bot.current_user_data[message.chat.id] = {'host': None, 'user': None, 'password': None, 'database': None}
     bot.send_message(message.chat.id,
                      "Привет! Я SQL-помощник. Я могу помочь тебе подключиться к базе данных."
-                     " Для этого введи /connect и следуй инструкциям!"
+                     "\nПожалуйста, ознакомьтесь с инструкцией!"
                      " ", reply_markup=bot_description()[1])
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn1 = types.KeyboardButton("/start")
     btn2 = types.KeyboardButton("/show_connection")
-    # btn4 = types.KeyboardButton("/connect")
-    markup.add(btn1, btn2)
+    btn4 = types.KeyboardButton("/connect")
+    markup.add(btn1, btn2, btn4)
     bot.send_message(message.chat.id, text="Привет, {0.first_name}! Выберите действие".format(
         message.from_user), reply_markup=markup)
 
@@ -83,9 +86,14 @@ def connect_handler(message):
     connect_password и connect_database получают от пользователя данные хоста,
     имени пользователя, пароля и имени базы данных соответственно.
     """
-    if bot.current_user_data[message.chat.id]['host'] is not None:
-        bot.send_message(message.chat.id, "Вы уже ввели данные подключения ранее. Если вы хотите "
-                                          "начать новое подключение, введите /start. ")
+    try:
+        if bot.current_user_data[message.chat.id]['host'] is not None:
+            bot.send_message(message.chat.id, "Вы уже ввели данные подключения ранее. Если вы хотите "
+                                              "начать новое подключение, введите /start. ")
+            return
+    except KeyError:
+        bot.send_message(message.chat.id, "Что-то пошло не так, попробуйте переключиться и выполните "
+                                          "команду /start")
         return
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     bot.send_message(message.chat.id, "Введите host в формате 0.0.0.0 для подключения к"
@@ -133,10 +141,11 @@ def connect_database(message):
     if (database.startswith('^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$') or database.startswith('/')):
         bot.reply_to(message, "Недопустимый символ в начале поля!")
         return
-
     try:
         result = run_query("SHOW TABLES", host, user, password, database)
         bot.send_message(message.chat.id, "Подключение к базе данных успешно. Результат запроса:\n{}".format(result))
+    except QueryError as error:
+        bot.send_message(message.chat.id, "Ошибка подключения к базе данных: {} Проверьте данные при вводе".format(error))
     except mysql.connector.errors.Error as error:
         bot.send_message(message.chat.id, "Ошибка подключения к базе данных: {}".format(error))
 
@@ -149,14 +158,18 @@ def show_connection(message):
     """
     Функция show_connection показывает текущие данные подключения пользователя,
     """
-    user_data = bot.current_user_data[message.chat.id]
-    connection_data = "Данные подключения:\n" \
-                      "Хост: {}\n" \
-                      "Имя пользователя: {}\n" \
-                      "Пароль: {}\n" \
-                      "Имя базы данных: {}".format(user_data['host'], user_data['user'], user_data['password'],
-                                                   user_data['database'])
-    bot.send_message(message.chat.id, connection_data)
+    try:
+        user_data = bot.current_user_data[message.chat.id]
+        connection_data = "Данные подключения:\n" \
+                          "Хост: {}\n" \
+                          "Имя пользователя: {}\n" \
+                          "Пароль: {}\n" \
+                          "Имя базы данных: {}".format(user_data['host'], user_data['user'], user_data['password'],
+                                                       user_data['database'])
+        bot.send_message(message.chat.id, connection_data)
+    except KeyError:
+        bot.send_message(message.chat.id, "Что-то пошло не так, попробуйте переключиться и выполните "
+                                          "команду /start")
 
 
 def check_response_size(response: Union[str, bytes]):
@@ -188,15 +201,6 @@ def create_shortened_response(response):
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
-    """
-    Функция show_connection показывает текущие данные подключения пользователя,
-    а функция handle_message обрабатывает запросы на выполнение SQL-запросов.
-    Функция handle_message проверяет, завершается ли запрос символом ';' и подключена ли
-    пользователь к базе данных. Если запрос начинается с SELECT, то он выполняется с
-    использованием run_query и возвращается результат пользователю. Если результат
-    превышает максимальный размер, то он сокращается с помощью функции
-    create_shortened_response.
-    """
     chat_id = message.chat.id
     text = message.text
 
@@ -270,6 +274,7 @@ def handle_message(message):
     with open('sql_users_search.txt', 'a', encoding='utf-8') as f:
         f.write(
             f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Запрос пользователя id {chat_id}: запрос sql {text}\n")
+
 
 
 bot.polling(none_stop=True)

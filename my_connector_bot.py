@@ -14,9 +14,9 @@ def run_query(query, host, user, password, database):
             database=database
         )
 
-        mycursor = mydb.cursor()
-        mycursor.execute(query)
-        result = mycursor.fetchall()
+        cursor = mydb.cursor()
+        cursor.execute(query)
+        result = cursor.fetchall()
         mydb.commit()
         mydb.close()
         return result
